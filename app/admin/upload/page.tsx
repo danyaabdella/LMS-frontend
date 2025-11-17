@@ -8,11 +8,12 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
-import { Upload, FileText, Trash2, Eye, Edit2, ArrowLeft, Loader2, BarChart3, LogOut } from 'lucide-react'
-import { examApi, quizApi, type Exam, type Question } from '@/lib/api'
+import { Upload, Trash2, Eye, Edit2, Loader2, BarChart3, LogOut } from 'lucide-react'
+import { examApi, type Exam } from '@/lib/api'
 import { toast } from 'sonner'
 import { signOut } from 'next-auth/react'
 import { useSession } from 'next-auth/react'
+import { ExamQuestionPreview } from '@/components/admin/ExamQuestionPreview'
 
 export default function AdminUploadPage() {
   const [exams, setExams] = useState<Exam[]>([])
@@ -20,9 +21,11 @@ export default function AdminUploadPage() {
   const [uploading, setUploading] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
   const [selectedExam, setSelectedExam] = useState<Exam | null>(null)
-  const [selectedExamQuestions, setSelectedExamQuestions] = useState<Question[]>([])
   const pathname = usePathname()
   const { data: session } = useSession()
+  const [editingExamId, setEditingExamId] = useState<number | null>(null)
+  const [editedName, setEditedName] = useState("")
+
 
   // Fetch exams on mount
   useEffect(() => {
@@ -39,16 +42,6 @@ export default function AdminUploadPage() {
       console.error(error)
     } finally {
       setLoading(false)
-    }
-  }
-
-  const loadExamQuestions = async (examId: number) => {
-    try {
-      const questions = await quizApi.getQuestions(examId)
-      setSelectedExamQuestions(questions)
-    } catch (error) {
-      toast.error('Failed to load questions')
-      console.error(error)
     }
   }
 
@@ -69,6 +62,48 @@ export default function AdminUploadPage() {
       await handleFileUpload(file)
     }
   }
+  const handleDeleteExam = async (id: number) => {
+    try {
+      await examApi.delete(id)
+      toast.success("Exam deleted successfully")
+      loadExams()
+    } catch (error) {
+      console.error(error)
+      toast.error("Failed to delete exam")
+    }
+  }
+  const adjustQuestionCount = (examId: number, delta: number) => {
+    setExams(prev =>
+      prev.map(exam =>
+        exam.id === examId
+          ? { ...exam, questionCount: Math.max(0, (exam.questionCount || 0) + delta) }
+          : exam
+      )
+    )
+    setSelectedExam(prev =>
+      prev && prev.id === examId
+        ? { ...prev, questionCount: Math.max(0, (prev.questionCount || 0) + delta) }
+        : prev
+    )
+  }
+
+  const handleSaveExam = async (id: number) => {
+    try {
+      const updatedExam = await examApi.update(id, { name: editedName })
+      toast.success('Exam updated successfully')
+      setEditingExamId(null)
+      setExams(prev =>
+        prev.map(exam => (exam.id === id ? { ...exam, name: updatedExam.name } : exam))
+      )
+      setSelectedExam(prev =>
+        prev && prev.id === id ? { ...prev, name: updatedExam.name } : prev
+      )
+    } catch (error) {
+      console.error(error)
+      toast.error(error instanceof Error ? error.message : 'Failed to update exam')
+    }
+  }
+    
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -113,13 +148,12 @@ export default function AdminUploadPage() {
     }
   }
 
-  const handleViewExam = async (exam: Exam) => {
+  const handleViewExam = (exam: Exam) => {
     setSelectedExam(exam)
-    await loadExamQuestions(exam.id)
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex">
+    <div className="min-h-screen bg-linear-to-br from-slate-900 via-slate-800 to-slate-900 flex">
       {/* SIDEBAR */}
       <div className="w-64 border-r border-slate-700 bg-slate-900/50 backdrop-blur-md flex flex-col">
         <div className="p-4 border-b border-slate-700">
@@ -247,28 +281,77 @@ export default function AdminUploadPage() {
                         </TableRow>
                       ) : (
                         exams.map((exam) => (
+                          // <TableRow key={exam.id} className="border-slate-700 hover:bg-slate-700/20">
+                          //   <TableCell className="font-medium">{exam.name}</TableCell>
+                          //   <TableCell className="text-slate-400">{exam.fileName}</TableCell>
+                          //   <TableCell>{exam.questionCount}</TableCell>
+                          //   <TableCell className="text-slate-400">
+                          //     {new Date(exam.createdAt).toLocaleDateString()}
+                          //   </TableCell>
+                          //   <TableCell>
+                          //     <Badge
+                          //       variant={
+                          //         exam.status === 'published'
+                          //           ? 'default'
+                          //           : exam.status === 'processing'
+                          //             ? 'secondary'
+                          //             : 'outline'
+                          //       }
+                          //     >
+                          //       {exam.status}
+                          //     </Badge>
+                          //   </TableCell>
+                          //   <TableCell>
+                          //     <div className="flex gap-2">
+                          //       <Button
+                          //         size="sm"
+                          //         variant="ghost"
+                          //         onClick={() => handleViewExam(exam)}
+                          //       >
+                          //         <Eye className="w-4 h-4" />
+                          //       </Button>
+                          //     </div>
+                          //   </TableCell>
+                          // </TableRow>
                           <TableRow key={exam.id} className="border-slate-700 hover:bg-slate-700/20">
-                            <TableCell className="font-medium">{exam.name}</TableCell>
+                          
+                            <TableCell className="font-medium">
+                              {editingExamId === exam.id ? (
+                                <Input 
+                                  value={editedName}
+                                  onChange={(e) => setEditedName(e.target.value)}
+                                  className="bg-slate-800 border-slate-600"
+                                />
+                              ) : (
+                                exam.name
+                              )}
+                            </TableCell>
+
                             <TableCell className="text-slate-400">{exam.fileName}</TableCell>
                             <TableCell>{exam.questionCount}</TableCell>
+
                             <TableCell className="text-slate-400">
                               {new Date(exam.createdAt).toLocaleDateString()}
                             </TableCell>
+
                             <TableCell>
                               <Badge
                                 variant={
                                   exam.status === 'published'
                                     ? 'default'
                                     : exam.status === 'processing'
-                                      ? 'secondary'
-                                      : 'outline'
+                                    ? 'secondary'
+                                    : 'outline'
                                 }
                               >
                                 {exam.status}
                               </Badge>
                             </TableCell>
+
                             <TableCell>
                               <div className="flex gap-2">
+
+                                {/* VIEW BUTTON */}
                                 <Button
                                   size="sm"
                                   variant="ghost"
@@ -276,9 +359,43 @@ export default function AdminUploadPage() {
                                 >
                                   <Eye className="w-4 h-4" />
                                 </Button>
+
+                                {/* EDIT / SAVE MODE */}
+                                {editingExamId === exam.id ? (
+                                  <>
+                                    <Button size="sm" variant="ghost" onClick={() => handleSaveExam(exam.id)}>
+                                      <span className="text-green-400">Save</span>
+                                    </Button>
+                                    <Button size="sm" variant="ghost" onClick={() => setEditingExamId(null)}>
+                                      <span className="text-red-400">Cancel</span>
+                                    </Button>
+                                  </>
+                                ) : (
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => {
+                                      setEditingExamId(exam.id)
+                                      setEditedName(exam.name)
+                                    }}
+                                  >
+                                    <Edit2 className="w-4 h-4" />
+                                  </Button>
+                                )}
+
+                                {/* DELETE BUTTON */}
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => handleDeleteExam(exam.id)}
+                                >
+                                  <Trash2 className="w-4 h-4 text-red-400" />
+                                </Button>
+
                               </div>
                             </TableCell>
                           </TableRow>
+
                         ))
                       )}
                     </TableBody>
@@ -288,62 +405,11 @@ export default function AdminUploadPage() {
             </Card>
           </>
         ) : (
-          <>
-            {/* Question Preview */}
-            <Button
-              variant="ghost"
-              onClick={() => setSelectedExam(null)}
-              className="mb-4"
-            >
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              Back to List
-            </Button>
-
-            <Card className="border-slate-700 bg-slate-800/50">
-              <CardHeader>
-                <CardTitle>{selectedExam.name}</CardTitle>
-                <CardDescription>
-                  {selectedExam.questionCount} questions • {selectedExam.status}
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                {selectedExamQuestions.length === 0 ? (
-                  <div className="text-center py-8 text-slate-400">
-                    <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
-                    Loading questions...
-                  </div>
-                ) : (
-                  <div className="space-y-6">
-                    {selectedExamQuestions.map((question, i) => (
-                      <Card key={question.id} className="border-slate-600 bg-slate-700/30">
-                        <CardContent className="pt-6">
-                          <p className="font-semibold mb-4">
-                            Question {question.questionNumber}: {question.questionText}
-                          </p>
-                          <div className="space-y-2">
-                            {question.options.map((option, idx) => (
-                              <div key={option.id} className="flex items-center gap-3">
-                                <input
-                                  type="radio"
-                                  name={`q${question.id}`}
-                                  id={`q${question.id}-${idx}`}
-                                  disabled
-                                  className="w-4 h-4"
-                                />
-                                <label htmlFor={`q${question.id}-${idx}`} className="flex-1">
-                                  {option.text}
-                                </label>
-                              </div>
-                            ))}
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </>
+          <ExamQuestionPreview
+            exam={selectedExam}
+            onBack={() => setSelectedExam(null)}
+            onQuestionCountChange={delta => adjustQuestionCount(selectedExam.id, delta)}
+          />
         )}
         </div>
       </div>

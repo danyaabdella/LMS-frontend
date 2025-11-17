@@ -14,6 +14,7 @@ interface QuizState {
   stage: 'list' | 'taking' | 'review'
   selectedExam: Exam | null
   questions: Question[]
+  reviewQuestions: Question[]
   answers: Record<string, number> // questionId -> selectedOptionId
   currentQuestion: number
   startTime: number | null
@@ -36,6 +37,7 @@ export default function StudentQuizPage() {
     stage: 'list',
     selectedExam: null,
     questions: [],
+    reviewQuestions: [],
     answers: {},
     currentQuestion: 0,
     startTime: null,
@@ -98,6 +100,7 @@ export default function StudentQuizPage() {
         stage: 'taking',
         selectedExam: exam,
         questions,
+        reviewQuestions: [],
         answers: {},
         currentQuestion: 0,
         startTime: Date.now(),
@@ -153,10 +156,20 @@ export default function StudentQuizPage() {
         durationSeconds,
       })
 
+      let reviewQuestions: Question[] = []
+      try {
+        reviewQuestions = await quizApi.getQuestions(quizState.selectedExam.id, {
+          includeCorrect: true,
+        })
+      } catch (err) {
+        console.error('Failed to load review questions', err)
+      }
+
       setQuizState(prev => ({
         ...prev,
         stage: 'review',
         submittedResult: result,
+        reviewQuestions,
       }))
 
       toast.success(`Quiz submitted! Score: ${result.score}%`)
@@ -169,7 +182,7 @@ export default function StudentQuizPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
+    <div className="min-h-screen bg-linear-to-br from-slate-900 via-slate-800 to-slate-900">
       {/* Header */}
       <div className="border-b border-slate-700 bg-slate-900/50 backdrop-blur-md sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
@@ -274,7 +287,7 @@ export default function StudentQuizPage() {
                   }
                   size="sm"
                   onClick={() => setQuizState(prev => ({ ...prev, currentQuestion: idx }))}
-                  className="flex-shrink-0"
+                  className="shrink-0"
                 >
                   {idx + 1}
                 </Button>
@@ -380,25 +393,28 @@ export default function StudentQuizPage() {
                     You answered {quizState.submittedResult.correct} of{' '}
                     {quizState.submittedResult.total} questions correctly
                   </p>
-                  <Button onClick={() => {
-                    setQuizState({
-                      stage: 'list',
-                      selectedExam: null,
-                      questions: [],
-                      answers: {},
-                      currentQuestion: 0,
-                      startTime: null,
-                      submittedResult: null,
-                    })
-                    setTimeLeft(0)
-                  }}>
+                  <Button
+                    onClick={() => {
+                      setQuizState({
+                        stage: 'list',
+                        selectedExam: null,
+                        questions: [],
+                        reviewQuestions: [],
+                        answers: {},
+                        currentQuestion: 0,
+                        startTime: null,
+                        submittedResult: null,
+                      })
+                      setTimeLeft(0)
+                    }}
+                  >
                     Back to Exams
                   </Button>
                 </div>
               </CardContent>
             </Card>
 
-            {/* Answer Review - Note: Backend doesn't return correct answers for security */}
+            {/* Answer Review */}
             <Card className="border-slate-700 bg-slate-800/50">
               <CardHeader>
                 <CardTitle>Your Answers</CardTitle>
@@ -406,9 +422,13 @@ export default function StudentQuizPage() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-6">
-                  {quizState.questions.map((question) => {
+                  {(quizState.reviewQuestions.length ? quizState.reviewQuestions : quizState.questions).map((question) => {
                     const selectedOptionId = quizState.answers[question.id]
                     const selectedOption = question.options.find(opt => opt.id === selectedOptionId)
+                    const correctOption = question.options.find(opt => opt.isCorrect)
+                    const isCorrectAnswer = question.options.some(
+                      opt => opt.id === selectedOptionId && opt.isCorrect
+                    )
 
                     return (
                       <Card key={question.id} className="border-slate-600 bg-slate-700/30">
@@ -418,29 +438,61 @@ export default function StudentQuizPage() {
                               <p className="font-semibold mb-3">
                                 Question {question.questionNumber}: {question.questionText}
                               </p>
-                              <div className="space-y-2">
-                                {question.options.map((option) => (
-                                  <div
-                                    key={option.id}
-                                    className={`p-2 rounded ${
-                                      option.id === selectedOptionId
-                                        ? 'bg-blue-500/20 text-blue-400 border border-blue-500/50'
-                                        : ''
-                                    }`}
-                                  >
-                                    <input 
-                                      type="radio" 
-                                      checked={option.id === selectedOptionId}
-                                      disabled 
-                                      className="mr-2" 
-                                    />
-                                    {option.text}
-                                    {option.id === selectedOptionId && (
-                                      <span className="ml-2 text-xs">(Your Answer)</span>
-                                    )}
-                                  </div>
-                                ))}
+                              <div className="flex items-center mb-4">
+                                {isCorrectAnswer ? (
+                                  <span className="flex items-center text-green-400 text-sm">
+                                    <CheckCircle className="w-4 h-4 mr-2" /> Correct
+                                  </span>
+                                ) : (
+                                  <span className="flex items-center text-red-400 text-sm">
+                                    <XCircle className="w-4 h-4 mr-2" /> Incorrect
+                                  </span>
+                                )}
                               </div>
+                              <div className="space-y-2">
+                                {question.options.map((option) => {
+                                  const isSelected = option.id === selectedOptionId
+                                  const isCorrect = option.isCorrect
+                                  return (
+                                    <div
+                                      key={option.id}
+                                      className={`p-2 rounded border ${
+                                        isCorrect
+                                          ? 'border-green-500/60 bg-green-500/10'
+                                          : isSelected
+                                            ? 'border-red-500/60 bg-red-500/10'
+                                            : 'border-slate-600'
+                                      }`}
+                                    >
+                                      <input
+                                        type="radio"
+                                        checked={isSelected}
+                                        disabled
+                                        className="mr-2"
+                                      />
+                                      {option.text}
+                                      {isCorrect && (
+                                        <span className="ml-2 text-xs text-green-400">(Correct)</span>
+                                      )}
+                                      {isSelected && !isCorrect && (
+                                        <span className="ml-2 text-xs text-red-400">(Your choice)</span>
+                                      )}
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                              {question.answerExplanation && (
+                                <div className="mt-4 text-sm text-slate-300 bg-slate-800/60 p-3 rounded border border-slate-600">
+                                  <p className="font-semibold text-slate-100 mb-1">Explanation</p>
+                                  <p>{question.answerExplanation}</p>
+                                </div>
+                              )}
+                              {!question.answerExplanation && correctOption && (
+                                <p className="mt-4 text-sm text-slate-400">
+                                  Correct answer:{' '}
+                                  <span className="text-slate-100">{correctOption.text}</span>
+                                </p>
+                              )}
                             </div>
                           </div>
                         </CardContent>

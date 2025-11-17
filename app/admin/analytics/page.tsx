@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import { TrendingUp, Users, ShoppingCart, Globe, Loader2, BarChart3, Upload, LogOut } from 'lucide-react'
 import { analyticsApi, type AnalyticsData } from '@/lib/api'
 import { signOut } from 'next-auth/react'
@@ -15,8 +16,20 @@ import PieChart from '@/components/charts/PieChartWrapper'
 
 const COLORS = ['#3b82f6', '#06b6d4', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#f97316', '#6366f1']
 
+type RegionStat = { name: string; value: number; percentage: number }
+type EthiopianRegionStat = { region: string; value: number; percentage: number }
+
+type DashboardData = AnalyticsData & {
+  geographicalData?: RegionStat[]
+  socialAnalytics?: {
+    tiktok: { followers: number; engagement: number; reach: number }
+    telegram: { subscribers: number; activeDaily: number; growth: string }
+  }
+  ethiopianRegionalData?: EthiopianRegionStat[]
+}
+
 export default function AnalyticsDashboardPage() {
-  const [data, setData] = useState<AnalyticsData | null>(null)
+  const [data, setData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
   const pathname = usePathname()
   const { data: session } = useSession()
@@ -65,7 +78,9 @@ export default function AnalyticsDashboardPage() {
   }
 
   // Pie chart data - use real geographical data from API
-  const geographicalData = data?.geographicalData || []
+  const geographicalData: RegionStat[] = data?.geographicalData ?? []
+  const ethiopianRegionalData: EthiopianRegionStat[] = data?.ethiopianRegionalData ?? []
+  const socialAnalytics = data?.socialAnalytics
   const pieData = {
     labels: geographicalData.map(r => r.name),
     datasets: [
@@ -82,7 +97,7 @@ export default function AnalyticsDashboardPage() {
   const purchasedPackages = data?.purchases.reduce((s, p) => s + p.count, 0) || 0
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex">
+    <div className="min-h-screen bg-linear-to-br from-slate-900 via-slate-800 to-slate-900 flex">
       {/* SIDEBAR */}
       <div className="w-64 border-r border-slate-700 bg-slate-900/50 backdrop-blur-md flex flex-col">
         <div className="p-4 border-b border-slate-700">
@@ -198,6 +213,64 @@ export default function AnalyticsDashboardPage() {
           </Card>
         </div>
 
+        {socialAnalytics && (
+          <div className="grid md:grid-cols-2 gap-4 mb-8">
+            <Card className="border-slate-700 bg-linear-to-br from-[#2b1d4b] via-slate-900 to-slate-900">
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle>TikTok Analytics</CardTitle>
+                    <CardDescription>Community engagement</CardDescription>
+                  </div>
+                  <Badge className="bg-purple-500/20 text-purple-300">TikTok</Badge>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-400">Followers</span>
+                  <span className="text-2xl font-bold">{socialAnalytics.tiktok.followers.toLocaleString()}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-400">Engagement</span>
+                  <span className="text-xl text-purple-300">{socialAnalytics.tiktok.engagement.toFixed(1)}%</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-400">Monthly Reach</span>
+                  <span className="text-xl">{socialAnalytics.tiktok.reach.toLocaleString()}</span>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="border-slate-700 bg-linear-to-br from-[#10344b] via-slate-900 to-slate-900">
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle>Telegram Analytics</CardTitle>
+                    <CardDescription>Community updates</CardDescription>
+                  </div>
+                  <Badge className="bg-cyan-500/20 text-cyan-300">Telegram</Badge>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-400">Subscribers</span>
+                  <span className="text-2xl font-bold">
+                    {socialAnalytics.telegram.subscribers.toLocaleString()}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-400">Active Daily</span>
+                  <span className="text-xl">{socialAnalytics.telegram.activeDaily.toLocaleString()}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-400">Growth</span>
+                  <span className="text-xl text-cyan-300">{socialAnalytics.telegram.growth}</span>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
         {/* CHARTS */}
         <div className="grid lg:grid-cols-2 gap-6 mb-8">
           {/* Line Chart */}
@@ -293,6 +366,37 @@ export default function AnalyticsDashboardPage() {
                     <div className="text-xs text-slate-500 mt-1">users</div>
                   </div>
                 ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {ethiopianRegionalData.length > 0 && (
+          <Card className="border-slate-700 bg-slate-800/50 mt-8">
+            <CardHeader>
+              <CardTitle>Ethiopian Regional Breakdown</CardTitle>
+              <CardDescription>Users grouped by Ethiopian regions</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-slate-700">
+                      <th className="py-3 px-4 text-slate-400 text-left">Region</th>
+                      <th className="py-3 px-4 text-slate-400 text-left">Users</th>
+                      <th className="py-3 px-4 text-slate-400 text-left">Percentage</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {ethiopianRegionalData.map((region, idx) => (
+                      <tr key={idx} className="border-b border-slate-700 hover:bg-slate-700/20">
+                        <td className="py-3 px-4">{region.region}</td>
+                        <td className="py-3 px-4 font-semibold">{region.value}</td>
+                        <td className="py-3 px-4 text-slate-400">{region.percentage}%</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </CardContent>
           </Card>

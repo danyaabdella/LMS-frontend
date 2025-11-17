@@ -97,12 +97,24 @@ export const examApi = {
       }
     );
   },
+  update: (id: number, payload: { name?: string }) =>
+    request<Exam>(`/exams/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
+
+  delete: (id: number) =>
+    request<{ success: boolean }>(`/exams/${id}`, {
+      method: 'DELETE',
+    }),
 };
 
 // Quiz API
 export const quizApi = {
-  getQuestions: (examId: number) =>
-    request<Question[]>(`/quizzes/${examId}/questions`),
+  getQuestions: (examId: number, options?: { includeCorrect?: boolean }) => {
+    const query = options?.includeCorrect ? '?includeCorrect=true' : '';
+    return request<Question[]>(`/quizzes/${examId}/questions${query}`);
+  },
   submit: (data: {
     examId: number;
     studentId: number;
@@ -117,6 +129,23 @@ export const quizApi = {
     }>('/quizzes/submit', {
       method: 'POST',
       body: JSON.stringify(data),
+    }),
+  deleteQuestion: (questionId: number) =>
+    request<{ success: boolean }>(`/quizzes/questions/${questionId}`, {
+      method: 'DELETE',
+    }),
+  updateQuestion: (
+    questionId: number,
+    payload: {
+      questionText: string;
+      difficulty?: string;
+      answerExplanation?: string;
+      options: Array<{ id: number; text: string; isCorrect: boolean }>;
+    }
+  ) =>
+    request<{ success: boolean }>(`/quizzes/questions/${questionId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
     }),
 };
 
@@ -163,16 +192,20 @@ export interface Exam {
   createdAt: string;
 }
 
+export interface QuestionOption {
+  id: number;
+  text: string;
+  number: number;
+  isCorrect?: boolean;
+}
+
 export interface Question {
   id: number;
   questionText: string;
   questionNumber: number;
   difficulty: 'easy' | 'medium' | 'hard';
-  options: Array<{
-    id: number;
-    text: string;
-    number: number;
-  }>;
+  answerExplanation?: string | null;
+  options: QuestionOption[];
 }
 
 export interface AnalyticsData {
